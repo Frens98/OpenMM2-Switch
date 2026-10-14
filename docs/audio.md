@@ -7,7 +7,13 @@ names the original function a behaviour was taken from; "inferred" marks what
 is still OpenMM2's reading and should be compared with the original game.
 The function-by-function audit is `docs/parity/audio.md`.
 
-Music (DirectMusic) is separate: see `docs/music.md`.
+Music (DirectMusic) is separate: see `docs/music.md`. That covers what MM2's
+synth port does to the soundtrack, the Big Air motif and the city ambience
+segment (`DMusicObject::InitPort`): the Microsoft Synthesizer's reverb is on
+(`DMUS_EFFECT_REVERB`, with the default `DMUS_WAVES_REVERB_PARAMS`: 0 dB in,
+-10 dB mix, 1000 ms, high-frequency ratio 0.001), which OpenMM2 approximates
+after its synth (`audio/SynthReverb`; the Waves algorithm is proprietary, so
+**inferred**), and the port is mono when STEREO FX is mono.
 
 ## Volume, pan and pitch units
 
@@ -34,7 +40,8 @@ the near one at full level. The mixer attenuates the far channel linearly, so
 `audSound::SetPan`). `audObject::SetPan` clamps pans to -1..1 first (this
 matters for the rain's thunder, below). With STEREO FX off (`IsStereo`
 false) MM2 skips its pan calls, so every sound stays centred
-(`Mixer::setStereo(false)`).
+(`Mixer::setStereo(false)`), and the music and the ambience segment are mono
+(`MusicPlayer::setStereo`, see `docs/music.md`).
 
 Pitch is a multiple of the sample rate. `AudSoundBase::SetFrequency` goes
 through `audObject::SetPitch`, which clamps the multiplier to 0..2, and
@@ -211,7 +218,7 @@ a time. Ported from MM2 `Aud3DObject` and `Aud3DObjectManager`:
 | With the player's car in a room flagged underground the 3D manager's echo goes on with a 0.5 s delay (`Object3DManager::setTunnel`, the race's hook) | MM2 (`mmPlayer::Update`, `Aud3DObjectManager::EchoOn / EchoOff`) |
 | Every sound object turns its samples' echo on and off at the start of its update: car engines, surfaces and skids, sirens, the semi's beeper and air brake, the clutch, ambient traffic engines and horns, ambient sets, pedestrian voices. The player's horn echoes 0.05 s behind at 0.997 of its rate; everything else at the manager's delay. Losing the sound slot turns the echo off | MM2 (`vehCarAudio::UpdateAudio / EchoOn`, `vehPoliceCarAudio`, `vehSemiCarAudio`, `aiAmbientVehicleAudio`, `Aud3DAmbientObject`, `AudCreatureContainer`) |
 | The echo is a duplicate of the sample (an effect voice, outside the 32-voice limit) that replays the sample's play, stop, volume and frequency changes once they are as old as the delay, at 0.96 of the volume (DirectSound units: volume × 0.96 × 10000 - 10000); only the oldest of several changes that come due together applies. A play also moves the duplicate to where the sample is at that moment. Its pan follows at once, mirrored and reduced to a quarter | MM2 (`EchoEffect`, `AudSoundBase`, `audFX::EnablePCEcho`) |
-| The music has no echo: `MMDMusicManager::EchoOn` is never called. The city's ambience segment stops underground and starts again outside | MM2 (`MMDMusicManager::UpdateAmbientSFX`) |
+| The music has no echo: `MMDMusicManager::EchoOn` is never called (it has the synth port's own reverb everywhere, see `docs/music.md`). The city's ambience segment stops underground and starts again outside | MM2 (`MMDMusicManager::UpdateAmbientSFX`) |
 | When the SOUND FX slider moves MM2 sets every echo to its sound's volume × master at once; OpenMM2's echoes take the new volume with their next queued change | deviation |
 
 ## Creature voices
@@ -240,7 +247,9 @@ a time. Ported from MM2 `Aud3DObject` and `Aud3DObjectManager`:
 
 ## Not implemented
 
-* EAX.
+* EAX. (The audio manager's EAX and reverb calls are empty in build 3393,
+  `AudManagerBase::SetReverbFlags` among them; the only reverb MM2 has is the
+  music synth's, see above.)
 * The in-race CD player (`mmCDPlayer`): with the game disc in a drive
   (`cdid.txt`, which SafeDisc requires at launch) MM2 sets `hasMusicCD` and
   the player's keys do nothing, so it never works in the retail game; MM2

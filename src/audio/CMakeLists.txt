@@ -5,6 +5,7 @@ add_library(mm2_audio STATIC
     AngelRandom.cpp
     AngelUnits.cpp
     EchoEffect.cpp
+    SynthReverb.cpp
     Wav.cpp
     Mixer.cpp
     SoundBank.cpp

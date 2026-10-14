@@ -327,7 +327,8 @@ const char* toString(MusicState s) {
 }
 
 MusicEngine::MusicEngine(std::shared_ptr<MusicLibrary> library, MusicTables tables, int sampleRate)
-    : m_library(std::move(library)), m_tables(std::move(tables)), m_rate(sampleRate) {
+    : m_library(std::move(library)), m_tables(std::move(tables)), m_rate(sampleRate),
+      m_musicReverb(sampleRate), m_ambienceReverb(sampleRate) {
     m_music = createPerformance(m_rate);
     m_motif = createPerformance(m_rate);
     m_ambience = createPerformance(m_rate);
@@ -560,6 +561,23 @@ void MusicEngine::stopAll() {
     m_state = MusicState::Silent;
 }
 
+void MusicEngine::setReverb(bool on) {
+    m_musicReverb.setEnabled(on);
+    m_ambienceReverb.setEnabled(on);
+}
+
+namespace {
+
+// A mono synth port (DMusicObject::InitPort with one audio channel) played
+// through a mono DirectSound buffer, which sounds at the same level in both
+// speakers. The fold of the synth's stereo voices into one channel is inferred.
+void foldToMono(float* stereo, int frames) {
+    for (std::size_t i = 0, n = static_cast<std::size_t>(frames) * 2; i < n; i += 2)
+        stereo[i] = stereo[i + 1] = (stereo[i] + stereo[i + 1]) * 0.5f;
+}
+
+} // namespace
+
 void MusicEngine::render(float* music, float* ambience, int frames) {
     const std::size_t n = static_cast<std::size_t>(frames) * 2;
     if (music) {
@@ -567,12 +585,23 @@ void MusicEngine::render(float* music, float* ambience, int frames) {
         if (m_music)
             DmPerformance_renderPcm(m_music, music, n, static_cast<DmRenderOptions>(DmRender_FLOAT | DmRender_STEREO));
         renderMotif(music, frames);
+        // The motif is a secondary segment on the soundtrack's performance in
+        // MM2, so it shares the port and its reverb.
+        m_musicReverb.process(music, frames);
+        if (!m_stereo)
+            foldToMono(music, frames);
     }
     if (ambience) {
         std::fill(ambience, ambience + n, 0.0f);
         if (m_ambience && !m_ambienceSegment.empty())
             DmPerformance_renderPcm(m_ambience, ambience, n,
                                     static_cast<DmRenderOptions>(DmRender_FLOAT | DmRender_STEREO));
+        // The ambience segment has its own MMDMusicManager in MM2
+        // (mmGameMusicData::LoadAmbientSFX), whose port has the reverb too.
+        // It runs on after a stop so the tail rings out.
+        m_ambienceReverb.process(ambience, frames);
+        if (!m_stereo)
+            foldToMono(ambience, frames);
     }
 }
 
@@ -740,7 +769,11 @@ std::vector<std::string> MusicPlayer::songSegments(int song, bool cruise) const 
 }
 
 void MusicPlayer::playMenu() {
-    loadThen({m_tables.menu}, [](MusicEngine& e) { e.setState(MusicState::Menu); });
+    const bool stereo = m_stereo.load(std::memory_order_relaxed);
+    loadThen({m_tables.menu}, [stereo](MusicEngine& e) {
+        e.setStereo(stereo);
+        e.setState(MusicState::Menu);
+    });
 }
 
 void MusicPlayer::startRace(int song, bool cruise, bool play) {
@@ -750,7 +783,9 @@ void MusicPlayer::startRace(int song, bool cruise, bool play) {
     const auto& songs = cruise ? m_tables.cruise : m_tables.race;
     if (song < 0 && !songs.empty())
         song = MusicTables::pickSong(static_cast<int>(songs.size()));
-    loadThen(songSegments(song, cruise), [song, cruise, play](MusicEngine& e) {
+    const bool stereo = m_stereo.load(std::memory_order_relaxed);
+    loadThen(songSegments(song, cruise), [song, cruise, play, stereo](MusicEngine& e) {
+        e.setStereo(stereo);
         e.selectSong(song, cruise);
         if (play)
             e.setState(MusicState::Racing);
@@ -776,7 +811,11 @@ void MusicPlayer::setAmbience(std::string_view which) {
 }
 
 void MusicPlayer::playSegment(std::string_view name) {
-    loadThen({std::string(name)}, [n = std::string(name)](MusicEngine& e) { e.playSegment(n); });
+    const bool stereo = m_stereo.load(std::memory_order_relaxed);
+    loadThen({std::string(name)}, [n = std::string(name), stereo](MusicEngine& e) {
+        e.setStereo(stereo);
+        e.playSegment(n);
+    });
 }
 
 void MusicPlayer::stop() {

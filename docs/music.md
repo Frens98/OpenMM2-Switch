@@ -10,8 +10,9 @@ instruments from DLS collections (`.dls`). All of it is in `aud/dmusic/` in
 Code: `src/audio/Music.{h,cpp}` (tables, loader, engine, threaded player),
 `src/audio/MusicDirector.{h,cpp}` (MM2's rules for when the music changes),
 `src/audio/MusicMotif.{h,c}` (motif support, built into the dmusic library),
-the dmusic section of `cmake/Dependencies.cmake`. Tools:
-`mm2tool musicinfo <source>` and `mm2tool music <source> ...`.
+`src/audio/SynthReverb.{h,cpp}` (the synth port's reverb), the dmusic
+section of `cmake/Dependencies.cmake`. Tools: `mm2tool musicinfo <source>`
+and `mm2tool music <source> ...`.
 
 ## What the game data says
 
@@ -75,6 +76,7 @@ Commands are applied in the order they were issued.
 | `setState(state)` | without a timing: menus, pause and results immediately, the rest on the next measure |
 | `triggerBigAir()` | the motif from the next beat of the soundtrack, played twice, following its tempo and chord |
 | `setAmbience("london" / "sf" / "underground" / "")` | city ambience on its own stream |
+| `setStereo(stereo)` | STEREO FX (not mono), taken by the next `playMenu` / `startRace` (see [the synth port](#the-synth-port-reverb-and-channels)) |
 | `stop()` | silence |
 
 The original's "Music/City Volume" option controlled the DirectMusic buffer,
@@ -129,6 +131,118 @@ Notes on the port:
   pattern and variation choice. `$OPENMM2_MUSIC_SEED` fixes the seed for
   reproducible renders.
 
+## The synth port: reverb and channels
+
+Every DirectMusic sound MM2 makes goes through a port on the software synth
+named "Microsoft Synthesizer" (`DMusicObject::FindMSSoftWareSynth`), opened by
+`DMusicObject::InitPort` (from `MMDMusicManager::Init` through
+`DMusicManager::Init` and `DMusicObject::Init`). Each phase of the game makes
+its own music manager and so its own port: the menus
+(`mmInterface::PlayUIMusic`, or `AudioOptions::ToggleMusic` when the music is
+turned on), a race's music (`mmSingleRaceMusicData` /
+`mmSingleRoamMusicData::LoadMusic`) or, with music off, its city ambience
+(`mmGameMusicData::LoadAmbientSFX`); `EndPhase` deletes it. The Big Air motif
+is a secondary segment on the soundtrack's performance, so it shares the
+soundtrack's port. The port's `DMUS_PORTPARAMS`:
+
+| Parameter | MM2 (`DMusicObject::InitPort`) | OpenMM2 |
+|-----------|--------------------------------|---------|
+| channel groups | 2 (32 pchannels) | dmusic's channels |
+| voices | 41 (`MMDMusicManager::Init`), when the port's caps give a limit | no limit (TinySoundFont adds voices as needed) |
+| audio channels | `AudManagerBase::IsStereo()` + 1: one with STEREO FX set to mono | stereo, or both channels (L + R) / 2 when mono |
+| sample rate | `AudManager::GetSamplesPerSecond`: 22050 Hz (its constructor's value; nothing changes it) | the mixer's rate (48 kHz); the reverb runs near 22050 Hz |
+| effects | `DMUS_EFFECT_REVERB` when the object's reverb flag (+0x18, set to 1 by the constructor) is on and the port's caps report the effect, which the Microsoft Synthesizer's do | `SynthReverb` on the music and on the ambience |
+
+**Mono.** `AudioOptions::SetStereoFX` maps STEREO FX 0 (mono) to a clear
+stereo flag and 1 (stereo) and 2 (surround) to a set one
+(`AudManagerBase::SetStereoFlag`), so only mono gives a one-channel port.
+`MusicPlayer::setStereo` follows the setting and the engine takes it when the
+menus or a race start their music (`playMenu`, `startRace`), as MM2 reads it
+when it opens the port: a change in the options is heard from the next phase.
+The mono port played through a mono DirectSound buffer, which sounds the same
+in both speakers; how the synth folds its panned voices into one channel is
+not known, so OpenMM2 uses (L + R) / 2 (**inferred**).
+
+**Reverb parameters.** MM2 never sets the reverb's parameters: there is no
+`IKsControl` property call on its port (and the audio manager's EAX and
+reverb calls, `AudManagerBase::SetReverbFlags` among them, are empty). So the
+synth's defaults apply, `DMUS_WAVES_REVERB_PARAMS` as the DirectX 7
+documentation gives them
+([Microsoft Learn: DMUS_WAVES_REVERB_PARAMS](https://learn.microsoft.com/en-us/previous-versions/dd551316(v=vs.85)),
+header `dmusicc.h`):
+
+| Member | Default | Meaning |
+|--------|---------|---------|
+| `fInGain` | 0 dB | input gain |
+| `fReverbMix` | -10 dB | 0 dB is 100% reverb with no direct sound, lower is drier; "the coefficients are calculated so that the overall output level stays approximately constant, regardless of the amount of reverb mix" |
+| `fReverbTime` | 1000 ms | decay time |
+| `fHighFreqRTRatio` | 0.001 | the high frequencies' decay time over `fReverbTime` (1000 ms and 0.1 would be 100 ms) |
+
+The same page says the reverb is Waves' TrueVerb, licensed to Microsoft as
+"SimpleVerb", and that from DirectX 8 music reverb is a DMO (the Waves Reverb
+DMO, `DSFXWavesReverb`, with the same four parameters but a default mix of
+0 dB). Which of the two a DirectX 7 style port gets on a newer DirectX
+runtime, and with which mix, is not known; OpenMM2 uses the DirectX 7
+values MM2 was written against (**inferred**). Wine's dmsynth turns its
+FluidSynth reverb on for `DMUS_EFFECT_REVERB` and sends every channel to it
+at the General MIDI default level (CC91 = 40, about -10 dB), which comes to
+much the same amount of reverb.
+
+**Reverb algorithm** (`audio/SynthReverb.cpp`, **inferred**: the Waves
+algorithm is proprietary). The structure follows OpenMPT's emulation of the
+Waves Reverb DMO (`soundlib/plugins/dmo/WavesReverb.cpp`, BSD-3-Clause):
+
+* four comb delays of 45 ms × 2^(n/4) (45, 53.5, 63.6, 75.7 ms), in two
+  pairs; each pair is cross-coupled by a two-channel allpass lattice
+  (coefficient 0.618, the inverse golden ratio) that takes 11.5% of the
+  pair's delays. Left feeds combs 0 and 3, right combs 1 and 2 (comb 2
+  inverted); the output is combs 0 + 2 (left) and 1 + 3 (right), so a mono
+  input comes out decorrelated;
+* each loop's gain makes the tail fall 60 dB in `fReverbTime`; a two-tap
+  low-pass in each loop takes the highest frequencies down in
+  `fReverbTime × fHighFreqRTRatio` (with 0.001 it averages two samples, a
+  zero at the reverb's Nyquist frequency);
+* `fReverbMix` is the reverb's share of the power: direct sound ×
+  √(1 − 10^(mix/10)), reverb input × √(10^(mix/10)) × a normalisation of the
+  loops' energy; both × `fInGain`. At the defaults the direct sound is at
+  0.949 (-0.46 dB).
+
+The loop filter acts at the reverb's own Nyquist frequency, and MM2's synth
+port ran at 22050 Hz, so the reverb runs at the output rate divided by the
+whole number nearest to output / 22050 (24 kHz at 48 kHz, 22050 Hz at
+44.1 kHz): the input is averaged over those frames and the reverb's output
+interpolated linearly between its samples. Its loop values are flushed to
+zero below 1e-20 (no denormals; a tail ends in exact silence), and input that
+is not a finite number is fed as silence.
+
+Measured from an impulse at 48 kHz (`tests/audio/test_synth_reverb.cpp`
+measures the same way; T30 from the Schroeder integral per band): 1.00 s at
+250 Hz, 0.92 s at 2 kHz, 0.75 s at 4 kHz, 0.46 s at 8 kHz; the first
+reflection after 32 ms; left and right uncorrelated.
+
+Effect on the music (30 s renders with `OPENMM2_MUSIC_SEED=1`, `mm2tool
+music --wav` with and without `--dry`): the correlation of the two channels
+drops from 0.90-0.995 to 0.74-0.90, the side (L − R) to mid (L + R) energy
+from -12.6..-26.0 dB to -8.3..-12.5 dB, with the RMS level up by at most
+0.7 dB. Samples over full scale stay rare: none in nine of the eleven
+renders, 2 → 0 in cruise 1 and 1 → 23 (of 2.9 million) in cruise 3:
+
+| Render | Correlation dry → reverb | Side/mid dry → reverb |
+|--------|--------------------------|-----------------------|
+| race 0 (Enemy) | 0.898 → 0.744 | -12.6 → -8.3 dB |
+| race 1 (Bullet) | 0.973 → 0.900 | -18.4 → -12.5 dB |
+| race 2 (Duck) | 0.899 → 0.776 | -12.7 → -9.0 dB |
+| race 3 (London) | 0.935 → 0.779 | -14.6 → -8.9 dB |
+| race 4 (PimpHand) | 0.995 → 0.852 | -26.0 → -10.9 dB |
+| cruise 0 (SunRoof) | 0.988 → 0.868 | -22.3 → -11.4 dB |
+| cruise 1 (TacoLoco) | 0.935 → 0.829 | -14.6 → -10.3 dB |
+| cruise 2 (LeTigre) | 0.942 → 0.809 | -15.2 → -9.8 dB |
+| cruise 3 (BackOff) | 0.928 → 0.820 | -14.3 → -9.6 dB |
+| menu (UI) | 0.980 → 0.816 | -20.0 → -9.9 dB |
+| SF ambience | 0.961 → 0.832 | -16.9 → -10.3 dB |
+
+The reverb costs about 0.05% of a core per stream.
+
 ## dmusic changes
 
 The upstream sources are patched at configure time. Each patch is checked, so
@@ -171,12 +285,15 @@ Two more fixes live in `MusicMotif.c`:
 
 * **Synthesizer.** dmusic converts DLS instruments to TinySoundFont.
   Articulations that SoundFont cannot express (some scaled DLS connection
-  blocks) are dropped, and there is no reverb or chorus, which the Microsoft
-  software synthesizer applied. Timbre and envelopes are close but not
-  identical.
+  blocks) are dropped. Timbre and envelopes are close but not identical. The
+  synth renders at the mixer's rate (48 kHz) where MM2's port ran at
+  22050 Hz, and has no 41-voice limit (MM2's port would steal voices past
+  it). The Microsoft Synthesizer's reverb is approximated after the synth
+  (above); MM2 asked for no chorus (`DMUS_EFFECT_CHORUS` is not set).
 * **Level.** The synth output is scaled by 0.5, which keeps every song below
-  full scale (peaks of -0.6 dBFS or lower across all states). The original's
-  absolute music level relative to effects is not known.
+  full scale (peaks of -0.6 dBFS or lower across all states in 8 s renders;
+  over 30 s a handful of samples reach it, see the reverb's measurements).
+  The original's absolute music level relative to effects is not known.
 * **Pattern selection.** dmusic follows DirectX 7-style random selection and
   never picks one-measure groove patterns (a rule added upstream for Gothic).
   For MM2 that skips `LondonIntro` and `VanillaIntro` at groove 1, so the
@@ -201,3 +318,18 @@ Two more fixes live in `MusicMotif.c`:
 * `tests/audio/test_music.cpp` covers table parsing, loading, audible output,
   the motif, silence after stop, the default-chord fix, streaming through
   the mixer and the `MusicDirector` rules.
+* `tests/audio/test_synth_reverb.cpp` covers the reverb: the documented
+  defaults and dry gain, the internal rate, the decay time at 250 Hz within
+  10% at 48, 44.1 and 22.05 kHz (and for 0.5 s and 2 s), the highs decaying
+  faster (and not with a ratio of 0.999), decorrelated channels, the direct
+  sound unchanged with the effect off or the driest mix, `fInGain`, block
+  sizes, silence (and a tail ending in exact zeros, no denormals), no NaN from
+  bad input or extreme parameters; with game data, a wider race song and a
+  mono engine and player.
+* `mm2tool music ... --dry` renders without the reverb (bit-identical to
+  OpenMM2 0.4.2's renders), `--mono` as with STEREO FX mono; every render
+  prints the channels' correlation and side/mid ratio.
+* A General MIDI fallback for systems without `gm.dls` (FluidR3_GM.sf2 and
+  the like): dmusic reads only DLS collections, so it would take a dmusic
+  patch to load SoundFont presets for the GM references; since no
+  soundtrack note plays on a GM instrument (above), it is not done (open).

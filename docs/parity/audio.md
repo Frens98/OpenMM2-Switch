@@ -4,16 +4,18 @@ Audited against MM2Recomp (midtown2.exe build 3393) on 2026-10-07; second
 pass (tunnel echo, world-owned ambient objects, cable cars, pedestrian voices,
 the race-side hooks) on 2026-10-08.
 
-Summary (after the second pass): 265 table rows (a row may cover several
-related functions); verified 69, fixed 155, deviation 11, inferred 10,
+Summary (after the second pass): 268 table rows (a row may cover several
+related functions); verified 69, fixed 157, deviation 11, inferred 11,
 open 0, openmm2 20. (The police explosion repeat and the ambient traffic
-audio were closed after the ai-vehicles merge.)
+audio were closed after the ai-vehicles merge; the music synth's reverb and
+mono port, GitHub issue #8, were added later.)
 
 Scope: `src/audio/game/*` (P, including `PedAudio.*` from the second pass), `src/audio/Mixer.*`, `Music*`,
 `MusicDirector.*`, `MusicMotif.*` (M), `src/audio/SoundBank.*`, `Wav.*` (F),
 plus the files added by the audit: `src/audio/EchoEffect.*` (the tunnel
 echo's duplicate buffer), `src/audio/AngelRandom.*` (MM2's random numbers), `AngelUnits.*` (volume / pan units, moved out of
-`game/AudioTables`) and `TextFields.*` (MM2's fgets / strtok / atof reading).
+`game/AudioTables`) and `TextFields.*` (MM2's fgets / strtok / atof reading),
+and later `SynthReverb.*` (the music synth port's reverb).
 Behaviour is described in `docs/audio.md` and `docs/music.md`.
 
 Cross-cutting findings that changed many rows:
@@ -321,7 +323,10 @@ Cross-cutting findings that changed many rows:
 | `MusicEngine::triggerMotif` | `DMusicObject::PlayMotif`, `SegmentWrapper::Play` | fixed | a jump while the motif still plays does nothing (SegmentWrapper::Play returns while playing); SetRepeats(1) |
 | `MusicEngine::startMotif / renderMotif`, `MusicMotif.c` | DirectMusic secondary segments | inferred | dmusic has no secondary segments or motifs |
 | `MusicEngine::setAmbience` | `mmGameMusicData::LoadAmbientSFX`, `MMDMusicManager::UpdateAmbientSFX` | fixed | plays the city segment; the race now stops it ("") on entering a tunnel (audio flag 0x80, StopSegment(0)) and starts it again outside (PlaySegment). MM2 does this only in its ambient mode (music off), as one DirectMusic object plays either; OpenMM2 plays the ambience on its own stream. "underground" is a tool option MM2 never uses |
-| `MusicEngine::playSegment / preload / loadMotifStyle / render / stopAll`, `toString` | — | openmm2 | tools and dmusic glue |
+| `MusicEngine::playSegment / preload / loadMotifStyle / stopAll`, `toString` | — | openmm2 | tools and dmusic glue |
+| `MusicEngine::render` | `DMusicObject::InitPort` (DMUS_EFFECT_REVERB, the audio channels) | fixed | found after the audit (GitHub issue #8): the soundtrack with its motif and the ambience segment now go through the synth port's reverb (`SynthReverb`), and are folded to mono with STEREO FX mono; they had no reverb and were always stereo. The fold to (L + R) / 2 is inferred |
+| `MusicEngine::setStereo / setReverb`, `MusicPlayer::setStereo` (taken by `playMenu`, `startRace`, `playSegment`) | `DMusicObject::InitPort` (`AudManagerBase::IsStereo() + 1` channels), `EndPhase` | fixed | the setting is read when a phase opens its port (the menu music, a race's music or ambience), so a change is heard from the next phase; `setReverb(false)` is a tool option (`mm2tool music --dry`) |
+| `SynthReverb` (`src/audio/SynthReverb.*`) | the Microsoft Synthesizer's reverb, `DMUS_WAVES_REVERB_PARAMS` | inferred | MM2 sets no parameters, so the documented DirectX 7 defaults (0 dB, -10 dB mix, 1000 ms, 0.001); the Waves algorithm is proprietary, so the structure follows OpenMPT's Waves Reverb DMO emulation, run near the port's 22050 Hz (docs/music.md) |
 | `MusicPlayer::*` | — | openmm2 | threading, ring buffers |
 | `MusicPlayer::startRace` | `mmSingleRaceMusicData::LoadMusic` | fixed | pickSong |
 

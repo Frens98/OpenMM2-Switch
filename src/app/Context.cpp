@@ -41,13 +41,18 @@ void Context::applyAudioSettings() {
     mixer->setBusVolume(audio::Bus::Music, music ? settings.musicVolume : 0.0f);
     mixer->setBalance(settings.balance);
     // AudioOptions::SetStereoFX: mono centres every voice; surround only adds
-    // an EAX/3D flag, so it plays as stereo.
+    // an EAX/3D flag, so it plays as stereo. Mono also makes the music mono
+    // (AudManagerBase::IsStereo sizes DirectMusic's port), from the next time
+    // the menus or a race start their music.
     mixer->setStereo(settings.stereoFx != 0);
+    if (m_music)
+        m_music->setStereo(settings.stereoFx != 0);
 }
 
 audio::MusicPlayer* Context::music() {
     if (!m_music && game && mixer) {
         m_music = std::make_unique<audio::MusicPlayer>(game->vfs, mixer->sampleRate());
+        m_music->setStereo(settings.stereoFx != 0);
         if (!m_music->ok()) {
             log::warn("music: soundtrack unavailable");
         } else {

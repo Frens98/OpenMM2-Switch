@@ -87,6 +87,20 @@ void printStats(const std::vector<float>& stereo, int rate) {
         auto db = [](double v) { return v > 1e-9 ? 20.0 * std::log10(v) : -180.0; };
         std::println("  {:3}s  rms {:7.1f} dBFS  peak {:7.1f} dBFS", sec, db(rms), db(peak));
     }
+    // Stereo image over the whole render: the correlation of the channels
+    // (1 is mono) and the side (L - R) to mid (L + R) energy ratio.
+    double ll = 0, rr = 0, lr = 0, side = 0, mid = 0;
+    for (std::size_t i = 0; i + 1 < stereo.size(); i += 2) {
+        const double l = stereo[i], r = stereo[i + 1];
+        ll += l * l;
+        rr += r * r;
+        lr += l * r;
+        side += (l - r) * (l - r);
+        mid += (l + r) * (l + r);
+    }
+    const double corr = ll > 0 && rr > 0 ? lr / std::sqrt(ll * rr) : 1.0;
+    const double sideMid = side > 0 && mid > 0 ? 10.0 * std::log10(side / mid) : -180.0;
+    std::println("  stereo: correlation {:.3f}  side/mid {:.1f} dB", corr, sideMid);
 }
 
 int cmdMusicInfo(std::span<char* const> args) {
@@ -140,7 +154,9 @@ int cmdMusicInfo(std::span<char* const> args) {
 }
 
 // music <source> <segment | --race N | --cruise N> [--states s:sec,...] [--ambience city]
-//       [--bigair sec] [--seconds N] [--wav out.wav]
+//       [--bigair sec] [--seconds N] [--mono] [--dry] [--wav out.wav]
+// --mono plays as with STEREO FX set to mono; --dry turns the synth's reverb
+// off (renders as OpenMM2 did before it had one).
 int cmdMusic(std::span<char* const> args) {
     if (args.size() < 2)
         return 2;
@@ -152,7 +168,7 @@ int cmdMusic(std::span<char* const> args) {
     bool cruise = false;
     double seconds = 10.0;
     double bigAir = -1.0;
-    bool profile = false;
+    bool profile = false, mono = false, dry = false;
     std::string wav, ambience, statesSpec;
     for (std::size_t i = 1; i < args.size(); ++i) {
         const std::string_view a = args[i];
@@ -170,6 +186,10 @@ int cmdMusic(std::span<char* const> args) {
             ambience = next();
         else if (a == "--profile")
             profile = true;
+        else if (a == "--mono")
+            mono = true;
+        else if (a == "--dry")
+            dry = true;
         else if (a == "--bigair")
             bigAir = str::parseDouble(next()).value_or(-1.0);
         else if (!a.starts_with("--"))
@@ -203,6 +223,8 @@ int cmdMusic(std::span<char* const> args) {
         // Offline: drive the engine directly, one block at a time.
         auto library = std::make_shared<audio::MusicLibrary>(*v);
         audio::MusicEngine engine(library, audio::MusicTables::load(*v), kRate);
+        engine.setStereo(!mono);
+        engine.setReverb(!dry);
         if (!segment.empty() && !engine.playSegment(segment))
             return 1;
         if (song != -2) {
@@ -258,6 +280,9 @@ int cmdMusic(std::span<char* const> args) {
     // Live: through the mixer and the default audio device.
     auto mixer = std::make_shared<audio::Mixer>(kRate);
     audio::MusicPlayer player(*v, kRate);
+    player.setStereo(!mono);
+    if (dry)
+        std::println(stderr, "note: --dry only applies to --wav renders");
     mixer->addStream(player.musicStream(), audio::Bus::Music);
     mixer->addStream(player.ambienceStream(), audio::Bus::Music);
     audio::AudioDevice device;
@@ -300,7 +325,8 @@ int cmdMusic(std::span<char* const> args) {
 const Registrar r1({"musicinfo", "<game-source>", "load every soundtrack segment and print lengths", &cmdMusicInfo});
 const Registrar r2({"music",
                     "<game-source> <segment | --race N | --cruise N> [--states state:sec,...] "
-                    "[--ambience london|sf|underground] [--bigair sec] [--seconds N] [--wav out.wav [--profile]]",
+                    "[--ambience london|sf|underground] [--bigair sec] [--seconds N] [--mono] "
+                    "[--wav out.wav [--dry] [--profile]]",
                     "render (--wav) or play the DirectMusic soundtrack", &cmdMusic});
 
 } // namespace

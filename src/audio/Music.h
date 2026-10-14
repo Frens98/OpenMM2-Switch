@@ -4,6 +4,7 @@
 // played with GothicKit/dmusic. See docs/music.md.
 
 #include "audio/Mixer.h"
+#include "audio/SynthReverb.h"
 #include "vfs/Vfs.h"
 
 #include <atomic>
@@ -136,8 +137,10 @@ enum class MusicTiming { Auto, Immediate, Beat, Measure };
 // Single-threaded music core: one performance for the soundtrack, one for the
 // "Big Air" motif (DirectMusic played it as a secondary segment; dmusic has no
 // secondary segments, so it is layered on its own performance) and one for city
-// ambience. Not thread-safe; MusicPlayer drives it from a worker thread, tools
-// and tests drive it directly.
+// ambience. Each output goes through the Microsoft Synthesizer's reverb
+// (SynthReverb), as MM2's synth ports have it on, and is mono when MM2 would
+// have opened a mono port. Not thread-safe; MusicPlayer drives it from a
+// worker thread, tools and tests drive it directly.
 class MusicEngine {
 public:
     MusicEngine(std::shared_ptr<MusicLibrary> library, MusicTables tables, int sampleRate);
@@ -169,6 +172,17 @@ public:
     // state changes never stall rendering.
     void preload();
 
+    // DMusicObject::InitPort opens the synth port with
+    // AudManagerBase::IsStereo() + 1 audio channels: with STEREO FX set to
+    // mono the music and the ambience are mono (both channels carry
+    // (left + right) / 2; inferred: how the synth folds its pans into one
+    // channel is not known).
+    void setStereo(bool stereo) { m_stereo = stereo; }
+    bool stereo() const { return m_stereo; }
+    // The synth's reverb (DMUS_EFFECT_REVERB, on in MM2); off for comparisons.
+    void setReverb(bool on);
+    bool reverb() const { return m_musicReverb.enabled(); }
+
     // Renders `frames` stereo frames of music and of ambience (either pointer may be null).
     void render(float* music, float* ambience, int frames);
 
@@ -198,6 +212,9 @@ private:
     int m_motifRepeats = 0;            // plays left after the current one
     std::string m_ambienceSegment;
     std::vector<float> m_scratch;
+    SynthReverb m_musicReverb;
+    SynthReverb m_ambienceReverb;
+    bool m_stereo = true;
 };
 
 // Threaded front end: a worker thread renders the engine ahead into two
@@ -223,6 +240,14 @@ public:
     // The original had one "Music/City" volume for both.
     std::shared_ptr<StreamSource> musicStream() { return m_musicStream; }
     std::shared_ptr<StreamSource> ambienceStream() { return m_ambienceStream; }
+
+    // AudManagerBase::IsStereo: STEREO FX is not mono. MM2 reads it when it
+    // opens its synth port (DMusicObject::InitPort), which it does when a
+    // phase starts its music: the menu music (mmInterface::PlayUIMusic) and
+    // a race's music or ambience (mmGameMusicData's loaders), each phase
+    // with a new MMDMusicManager (EndPhase deletes the old one). So a change
+    // is heard from the next playMenu() or startRace().
+    void setStereo(bool stereo) { m_stereo.store(stereo, std::memory_order_relaxed); }
 
     void playMenu();
     // song < 0: random. Preloads the song's segments in the background, then
@@ -256,6 +281,7 @@ private:
     std::condition_variable m_wake;
     std::deque<std::function<void(MusicEngine&)>> m_commands;
     std::atomic<bool> m_quit{false};
+    std::atomic<bool> m_stereo{true};
     std::atomic<std::uint64_t> m_underruns{0};
     struct LoadRequest {
         std::vector<std::string> names;
