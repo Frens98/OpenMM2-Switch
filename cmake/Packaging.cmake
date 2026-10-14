@@ -101,6 +101,11 @@ foreach(dep_dir IN LISTS _openmm2_dep_dirs)
     endif()
 endforeach()
 
+# Code adapted from projects that are not fetched dependencies: their notices.
+# audio/SynthReverb follows OpenMPT's Waves Reverb emulation (BSD-3-Clause).
+install(FILES "${OPENMM2_PACKAGING_DIR}/licenses/openmpt.txt" DESTINATION "${OPENMM2_INSTALL_LICENSEDIR}"
+        COMPONENT app)
+
 # --- Linux desktop integration ---------------------------------------------
 if(UNIX AND NOT APPLE)
     install(FILES "${OPENMM2_PACKAGING_DIR}/linux/${OPENMM2_APP_ID}.desktop"

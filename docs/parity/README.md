@@ -267,6 +267,8 @@ audited in [openmm2-only.md](openmm2-only.md).
 | `src/audio/MusicMotif.h` | 44 | M | audio |
 | `src/audio/SoundBank.cpp` | 70 | F | audio |
 | `src/audio/SoundBank.h` | 45 | F | audio |
+| `src/audio/SynthReverb.cpp` | 182 | M | audio |
+| `src/audio/SynthReverb.h` | 115 | M | audio |
 | `src/audio/TextFields.cpp` | 101 | F | audio |
 | `src/audio/TextFields.h` | 34 | F | audio |
 | `src/audio/Wav.cpp` | 100 | F | audio |

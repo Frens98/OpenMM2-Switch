@@ -14,7 +14,8 @@
 // The reverb is Waves' "SimpleVerb" (TrueVerb licensed to Microsoft), which is
 // proprietary. This is an approximation (inferred): its structure follows
 // OpenMPT's emulation of the DirectX 8 Waves Reverb DMO (soundlib/plugins/dmo/
-// WavesReverb.cpp, BSD-3-Clause, by the OpenMPT developers), which takes the
+// WavesReverb.cpp, BSD-3-Clause, by the OpenMPT developers; its notice ships
+// as licenses/openmpt.txt, packaging/licenses/openmpt.txt here), which takes the
 // same four parameters: four comb delays of 45 ms * 2^(n/4) cross-coupled in
 // pairs by allpass lattices (golden-ratio coefficients), a two-tap low-pass in
 // each loop for the high-frequency decay, and a dry/wet split that keeps the
