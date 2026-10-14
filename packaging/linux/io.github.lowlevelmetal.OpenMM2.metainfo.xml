@@ -44,6 +44,11 @@
     <display_length compare="ge">768</display_length>
   </requires>
   <releases>
+    <release version="0.4.3" date="2026-10-14" type="development">
+      <description>
+        <p>The music and city ambience play through the reverb the original game's DirectMusic synthesizer added, and in mono when the stereo option is set to mono.</p>
+      </description>
+    </release>
     <release version="0.4.2" date="2026-10-10" type="development">
       <description>
         <p>The multiplayer net name is used as typed, without having to press Enter, and changing it no longer stalls the menus.</p>
