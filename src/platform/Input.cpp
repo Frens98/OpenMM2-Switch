@@ -209,6 +209,13 @@ void Input::updateDevices() {
     }
 }
 
+bool Input::gamepadPressed(GamepadButton button) const {
+    const auto index = static_cast<std::size_t>(button);
+    if (index >= static_cast<std::size_t>(GamepadButton::Count))
+        return false;
+    return std::ranges::any_of(m_gamepads, [index](const GamepadState& gamepad) { return gamepad.pressed.test(index); });
+}
+
 void Input::startTextInput(Window& window) { SDL_StartTextInput(window.sdl()); }
 void Input::stopTextInput(Window& window) { SDL_StopTextInput(window.sdl()); }
 

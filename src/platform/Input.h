@@ -104,6 +104,7 @@ public:
 
     const std::vector<GamepadState>& gamepads() const { return m_gamepads; }
     const std::vector<JoystickState>& joysticks() const { return m_joysticks; }
+    bool gamepadPressed(GamepadButton button) const;
     // Rumble motors 0..1 for `ms` milliseconds. Returns false if unsupported.
     bool rumbleGamepad(std::size_t index, float low, float high, std::uint32_t ms);
     bool rumbleJoystick(std::size_t index, float low, float high, std::uint32_t ms);

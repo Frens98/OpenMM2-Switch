@@ -85,6 +85,7 @@ protected:
         fe.ctx.settings = m_savedSettings;
         fe.config.automatic = m_savedAutomatic;
         fe.ctx.applyAudioSettings();
+        fe.ctx.saveSettings();
     }
     // DONE (id 0x1f5, mmInterface::Update, after the page's DoneAction).
     virtual void done(Frontend& fe) {
@@ -106,7 +107,10 @@ private:
         // the page's ResetDefaultAction.
         // odef_dlg: "Are you sure you want to restore the original settings?"
         fe.dialog("jpg/odef_dlg.jpg", menu_id::kDefaults,
-                  {{"texture/dlg_ok.tga", {180, 176}, [this, &fe] { resetDefaults(fe); }},
+                  {{"texture/dlg_ok.tga", {180, 176}, [this, &fe] {
+                       resetDefaults(fe);
+                       fe.ctx.saveSettings();
+                   }},
                    {"texture/dlg_can.tga", {18, 176}, {}}});
     }
 };
@@ -276,7 +280,10 @@ protected:
     // the driver's file at the next race start, mmInterface::BeDone; OpenMM2
     // saves them with the settings). The display mode, like MM2's
     // DoneAction, changes only on DONE.
-    void stripOptions(Frontend& fe) override { fe.pop(); }
+    void stripOptions(Frontend& fe) override {
+        fe.ctx.saveSettings();
+        fe.pop();
+    }
 
     // GraphicsOptions::DoneAction: the display mode changes here.
     void done(Frontend& fe) override {
@@ -305,7 +312,13 @@ private:
                 [&ctx, key, def, n = static_cast<int>(options.size())] {
                     return iniInt(ctx, "Graphics", key, def, 0, n - 1);
                 },
-                [&ctx, key](int i) { ctx.settings.ini.setInt("Graphics", key, i); })
+                [&ctx, key](int i) {
+                    ctx.settings.ini.setInt("Graphics", key, i);
+                    // Persist discrete quality changes as soon as they are
+                    // made; Switch homebrew can be closed from the system UI
+                    // without the normal in-game shutdown path.
+                    ctx.saveSettings();
+                })
             .help = help;
     }
 
@@ -314,7 +327,10 @@ private:
         const Vec2 p = fe.layout.position(menu_id::kGraphics, index, {kLampX, y});
         auto& lamp = menu.add<ui::LampItem>(
             SpriteSheet{sprite, 5}, p.x, p.y, [&ctx, key] { return iniBool(ctx, "Graphics", key, true); },
-            [&ctx, key] { ctx.settings.ini.setBool("Graphics", key, !iniBool(ctx, "Graphics", key, true)); });
+            [&ctx, key] {
+                ctx.settings.ini.setBool("Graphics", key, !iniBool(ctx, "Graphics", key, true));
+                ctx.saveSettings();
+            });
         lamp.help = help;
         return lamp;
     }

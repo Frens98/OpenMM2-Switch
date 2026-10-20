@@ -1017,6 +1017,15 @@ public:
     ~FrontendScreen() override { m_fe.ctx.input.stopTextInput(m_fe.ctx.window()); }
 
     void update(Context& ctx, double dt) override {
+#ifdef __SWITCH__
+        // Plus is the system-style menu/exit shortcut on Switch. In a race the
+        // race screen opens its pause menu; from front-end pages, keep a global
+        // route to the normal quit confirmation dialog.
+        if (ctx.input.gamepadPressed(platform::GamepadButton::Start)) {
+            m_fe.askQuit();
+            return;
+        }
+#endif
         // Multiplayer: keep the session alive on every page and follow the
         // host into the race when the countdown starts.
         if (ctx.netGame) {

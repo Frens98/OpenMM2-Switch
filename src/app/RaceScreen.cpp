@@ -263,9 +263,13 @@ public:
             updatePopup(ctx, dt);
             if (ctx.nextScreen)
                 return;
-        } else if (ctx.input.keyPressed(platform::Key::Escape)) {
+        } else if (ctx.input.keyPressed(platform::Key::Escape) ||
+                   ctx.input.gamepadPressed(platform::GamepadButton::Start) ||
+                   ctx.input.gamepadPressed(platform::GamepadButton::Back)) {
             // mmGame::UpdateDebugInput: Escape stops the announcer
-            // (mmSpeechContainer::Stop), then mmPopup::ProcessEscape.
+            // (mmSpeechContainer::Stop), then mmPopup::ProcessEscape. Start
+            // (Switch +) is the primary pause binding; Back (Switch -) is an
+            // additional exit route for controllers that remap Start.
             m_announcer.stop();
             openPopup(ctx, true);
         } else if (!m_flyCamera && m_gameInput.fired(controls::Action::EnterChat)) {
