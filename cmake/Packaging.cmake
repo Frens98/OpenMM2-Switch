@@ -33,7 +33,13 @@ else()
 endif()
 
 # --- Programs ----------------------------------------------------------------
-if(TARGET openmm2)
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    install(FILES "${PROJECT_BINARY_DIR}/bin/openmm2.nro"
+            DESTINATION "switch/OpenMM2" COMPONENT app)
+    install(FILES "${PROJECT_SOURCE_DIR}/docs/switch-port.md"
+                  "${PROJECT_SOURCE_DIR}/LICENSE"
+            DESTINATION "switch/OpenMM2" COMPONENT app)
+elseif(TARGET openmm2)
     install(TARGETS openmm2 RUNTIME DESTINATION "${OPENMM2_INSTALL_BINDIR}" COMPONENT app)
 endif()
 if(TARGET mm2tool)
@@ -61,7 +67,9 @@ if(MSVC)
 endif()
 
 # --- Documentation and licences ----------------------------------------------
-if(WIN32)
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # Switch packages are ZIPs rooted at the SD-card layout installed above.
+elseif(WIN32)
     install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" DESTINATION "${OPENMM2_INSTALL_DOCDIR}" RENAME LICENSE.txt
             COMPONENT app)
     if(EXISTS "${PROJECT_SOURCE_DIR}/README.md")
@@ -107,7 +115,7 @@ install(FILES "${OPENMM2_PACKAGING_DIR}/licenses/openmpt.txt" DESTINATION "${OPE
         COMPONENT app)
 
 # --- Linux desktop integration ---------------------------------------------
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     install(FILES "${OPENMM2_PACKAGING_DIR}/linux/${OPENMM2_APP_ID}.desktop"
             DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications" COMPONENT app)
     install(FILES "${OPENMM2_PACKAGING_DIR}/linux/${OPENMM2_APP_ID}.metainfo.xml"
@@ -152,7 +160,11 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     set(_openmm2_arch arm64)
 endif()
 
-if(WIN32)
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(CPACK_GENERATOR ZIP)
+    set(CPACK_PACKAGE_FILE_NAME "OpenMM2-${PROJECT_VERSION}-switch-homebrew")
+    set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+elseif(WIN32)
     set(CPACK_GENERATOR ZIP)
     set(CPACK_PACKAGE_FILE_NAME "OpenMM2-${PROJECT_VERSION}-windows-${_openmm2_arch}-portable")
     # Mark the archive as a portable install (see core/Paths.h).

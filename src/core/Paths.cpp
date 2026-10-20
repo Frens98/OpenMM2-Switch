@@ -7,7 +7,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
-#else
+#elif !defined(__SWITCH__)
 #include <unistd.h>
 #endif
 
@@ -42,7 +42,16 @@ std::filesystem::path xdgDir(const char* var, const char* fallbackRelHome) {
 } // namespace
 
 std::filesystem::path executableDir() {
-#ifdef _WIN32
+#ifdef __SWITCH__
+    // hbmenu supplies the launched NRO path as argv[0]. main() stores it in
+    // this variable before any settings or game data paths are requested.
+    if (const char* nro = std::getenv("OPENMM2_SWITCH_NRO_PATH"); nro && *nro) {
+        const std::filesystem::path path(nro);
+        if (!path.parent_path().empty())
+            return path.parent_path();
+    }
+    return std::filesystem::current_path();
+#elif defined(_WIN32)
     std::vector<wchar_t> buf(MAX_PATH);
     while (true) {
         const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
@@ -62,11 +71,16 @@ std::filesystem::path executableDir() {
 }
 
 bool isPortable() {
+#ifdef __SWITCH__
+    // Keep saves, config, logs and caches alongside the NRO on the SD card.
+    return true;
+#else
     static const bool portable = [] {
         std::error_code ec;
         return std::filesystem::exists(executableDir() / "portable.txt", ec);
     }();
     return portable;
+#endif
 }
 
 std::filesystem::path userConfigDir() {

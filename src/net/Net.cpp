@@ -9,6 +9,14 @@
 #include <format>
 #include <mutex>
 
+#ifdef __SWITCH__
+extern "C" {
+#include <switch/services/nifm.h>
+#include <switch/services/ssl.h>
+#include <switch/runtime/devices/socket.h>
+}
+#endif
+
 namespace mm2::net {
 namespace {
 
@@ -19,9 +27,20 @@ bool g_initOk = false;
 bool acquire() {
     std::lock_guard lock(g_initMutex);
     if (g_initCount++ == 0) {
+#ifdef __SWITCH__
+        if (socketInitializeDefault() != 0) {
+            g_initOk = false;
+            log::error("net: socketInitializeDefault failed");
+            return false;
+        }
+#endif
         g_initOk = enet_initialize() == 0;
-        if (!g_initOk)
+        if (!g_initOk) {
             log::error("net: enet_initialize failed");
+#ifdef __SWITCH__
+            socketExit();
+#endif
+        }
     }
     return g_initOk;
 }
@@ -30,6 +49,9 @@ void release() {
     std::lock_guard lock(g_initMutex);
     if (--g_initCount == 0 && g_initOk) {
         enet_deinitialize();
+#ifdef __SWITCH__
+        socketExit();
+#endif
         g_initOk = false;
     }
 }

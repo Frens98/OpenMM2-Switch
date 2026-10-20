@@ -20,6 +20,13 @@ bool Api::load(std::string* missing) {
 #define MM2_GL_LOAD(ret, name, params) get(name, "gl" #name, true);
     MM2_GL_FUNCTIONS(MM2_GL_LOAD)
 #undef MM2_GL_LOAD
+#ifdef __SWITCH__
+    get(DepthRangef, "glDepthRangef", true);
+    get(ClearDepthf, "glClearDepthf", true);
+#else
+    get(DepthRange, "glDepthRange", true);
+    get(ClearDepth, "glClearDepth", true);
+#endif
     get(DebugMessageCallback, "glDebugMessageCallback", false);
     get(ObjectLabel, "glObjectLabel", false);
     return ok;

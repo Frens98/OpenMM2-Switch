@@ -25,12 +25,26 @@ set(SDL_TEST_LIBRARY OFF)
 set(SDL_EXAMPLES OFF)
 set(SDL_TESTS OFF)
 set(SDL_INSTALL OFF)
-FetchContent_Declare(SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.4.18
-    GIT_SHALLOW TRUE
-    SYSTEM
-    FIND_PACKAGE_ARGS 3.2 CONFIG)
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    find_package(Git REQUIRED)
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.4.18
+        GIT_SHALLOW TRUE
+        PATCH_COMMAND "${CMAKE_COMMAND}"
+            "-DSDL_SOURCE_DIR=<SOURCE_DIR>"
+            "-DPATCH_DIR=${PROJECT_SOURCE_DIR}/cmake/patches"
+            "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/PatchSDL3Switch.cmake"
+        SYSTEM)
+else()
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.4.18
+        GIT_SHALLOW TRUE
+        SYSTEM
+        FIND_PACKAGE_ARGS 3.2 CONFIG)
+endif()
 
 # --- miniz: raw deflate decoding for DAVE archives ---------------------------
 # Built from its sources directly; we only need the inflater and its upstream
@@ -70,6 +84,64 @@ FetchContent_Declare(imgui
 
 FetchContent_MakeAvailable(SDL3 miniz enet miniupnpc imgui)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # GCC runs as a Windows executable under MSYS2 here. SDL's generated PCH
+    # embeds MSYS paths (/c/...) that the devkitA64 compiler cannot resolve.
+    set_property(TARGET SDL3-static PROPERTY DISABLE_PRECOMPILE_HEADERS ON)
+
+    # libnx has no if_indextoname or getifaddrs API, and its sockets do not
+    # support the optional Unix-domain miniSSDPd helper.
+    set(_miniupnpc_src "${miniupnpc_SOURCE_DIR}/miniupnpc/src")
+    set(_miniupnpc_source "${_miniupnpc_src}/miniupnpc.c")
+    file(READ "${_miniupnpc_source}" _miniupnpc_text)
+    while(_miniupnpc_text MATCHES "&& !defined\\(__SWITCH__\\) && !defined\\(__SWITCH__\\)")
+        string(REPLACE
+            "&& !defined(__SWITCH__) && !defined(__SWITCH__)"
+            "&& !defined(__SWITCH__)"
+            _miniupnpc_text "${_miniupnpc_text}")
+    endwhile()
+    if(NOT _miniupnpc_text MATCHES "#if defined\\(IF_NAMESIZE\\) && !defined\\(_WIN32\\) && !defined\\(__SWITCH__\\)")
+        string(REPLACE
+            "#if defined(IF_NAMESIZE) && !defined(_WIN32)"
+            "#if defined(IF_NAMESIZE) && !defined(_WIN32) && !defined(__SWITCH__)"
+            _miniupnpc_text "${_miniupnpc_text}")
+    endif()
+    file(WRITE "${_miniupnpc_source}" "${_miniupnpc_text}")
+
+    set(_miniwget_source "${_miniupnpc_src}/miniwget.c")
+    file(READ "${_miniwget_source}" _miniwget_text)
+    string(REPLACE
+        "#ifdef IF_NAMESIZE"
+        "#if defined(IF_NAMESIZE) && !defined(__SWITCH__)"
+        _miniwget_text "${_miniwget_text}")
+    file(WRITE "${_miniwget_source}" "${_miniwget_text}")
+
+    set(_minissdpc_source "${_miniupnpc_src}/minissdpc.c")
+    file(READ "${_minissdpc_source}" _minissdpc_text)
+    string(REPLACE
+        "#include <sys/un.h>"
+        "#if !defined(__SWITCH__)\n#include <sys/un.h>\n#endif"
+        _minissdpc_text "${_minissdpc_text}")
+    string(REPLACE
+        "unsigned int ifindex = if_nametoindex(multicastif); /* eth0, etc. */"
+        "unsigned int ifindex = (unsigned int)strtoul(multicastif, NULL, 10);"
+        _minissdpc_text "${_minissdpc_text}")
+    string(REPLACE
+        "reqn.imr_ifindex = if_nametoindex(multicastif);"
+        "reqn.imr_ifindex = (int)strtoul(multicastif, NULL, 10);"
+        _minissdpc_text "${_minissdpc_text}")
+    string(REPLACE "\r\n" "\n" _minissdpc_text "${_minissdpc_text}")
+    string(FIND "${_minissdpc_text}" "int\nconnectToMiniSSDPD(const char * socketpath)" _minissdpc_start)
+    string(FIND "${_minissdpc_text}" "\nint\ndisconnectFromMiniSSDPD" _minissdpc_end)
+    if(NOT _minissdpc_start EQUAL -1 AND NOT _minissdpc_end EQUAL -1)
+        string(SUBSTRING "${_minissdpc_text}" 0 ${_minissdpc_start} _minissdpc_prefix)
+        string(SUBSTRING "${_minissdpc_text}" ${_minissdpc_end} -1 _minissdpc_suffix)
+        set(_minissdpc_text
+            "${_minissdpc_prefix}int\nconnectToMiniSSDPD(const char * socketpath)\n{\n\t(void)socketpath;\n\treturn MINISSDPC_SOCKET_ERROR;\n}\n${_minissdpc_suffix}")
+    endif()
+    file(WRITE "${_minissdpc_source}" "${_minissdpc_text}")
+endif()
+
 # miniz ---------------------------------------------------------------------
 set(_miniz_gen "${miniz_BINARY_DIR}/generated")
 file(WRITE "${_miniz_gen}/miniz_export.h" "#pragma once\n#define MINIZ_EXPORT\n")
@@ -102,6 +174,9 @@ add_library(openmm2_imgui STATIC
 target_include_directories(openmm2_imgui SYSTEM PUBLIC "${imgui_SOURCE_DIR}" "${imgui_SOURCE_DIR}/backends")
 target_link_libraries(openmm2_imgui PUBLIC SDL3::SDL3)
 target_compile_definitions(openmm2_imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    target_compile_definitions(openmm2_imgui PRIVATE IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS)
+endif()
 add_library(OpenMM2::imgui ALIAS openmm2_imgui)
 
 # --- Vulkan: headers + volk loader + VMA (no link-time dependency on a loader)

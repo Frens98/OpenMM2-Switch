@@ -32,3 +32,7 @@ openmm2_embed_shaders(mm2_render
         shaders/composite.frag)
 
 add_library(OpenMM2::render ALIAS mm2_render)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    target_include_directories(mm2_render PRIVATE "${DEVKITPRO}/portlibs/switch/include")
+endif()

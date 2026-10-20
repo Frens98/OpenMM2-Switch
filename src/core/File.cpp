@@ -96,10 +96,19 @@ OsFile::~OsFile() {
 }
 
 std::size_t OsFile::readAt(std::uint64_t offset, std::span<std::byte> out) const {
+#ifdef __SWITCH__
+    std::lock_guard lock(m_readMutex);
+#endif
     std::size_t total = 0;
     while (total < out.size()) {
+#ifdef __SWITCH__
+        if (::lseek(m_fd, static_cast<off_t>(offset + total), SEEK_SET) < 0)
+            break;
+        const ssize_t got = ::read(m_fd, out.data() + total, out.size() - total);
+#else
         const ssize_t got =
             ::pread(m_fd, out.data() + total, out.size() - total, static_cast<off_t>(offset + total));
+#endif
         if (got < 0 && errno == EINTR)
             continue;
         if (got <= 0)
@@ -169,10 +178,34 @@ bool writeAtomic(const std::filesystem::path& path, std::span<const std::byte> c
         }
     }
     std::filesystem::rename(tmp, path, ec);
+    if (!ec)
+        return true;
+
+    // Some filesystems (including Horizon's SD-card filesystem) do not let
+    // rename replace an existing file. Move the old file aside, install the
+    // completed temporary file, and restore the old file if that fails.
+    std::error_code existsError;
+    if (!std::filesystem::exists(path, existsError) || existsError) {
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+
+    auto backup = path;
+    backup += std::format(".{:08x}.bak", rd());
+    std::filesystem::rename(path, backup, ec);
     if (ec) {
         std::filesystem::remove(tmp, ec);
         return false;
     }
+
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::error_code restoreError;
+        std::filesystem::rename(backup, path, restoreError);
+        std::filesystem::remove(tmp, restoreError);
+        return false;
+    }
+    std::filesystem::remove(backup, ec);
     return true;
 }
 

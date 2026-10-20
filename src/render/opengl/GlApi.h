@@ -1,11 +1,14 @@
 #pragma once
 
-// Minimal OpenGL 3.3 core function loader. Function pointers are fetched with
-// SDL_GL_GetProcAddress, so no OpenGL import library is linked and no extra
-// loader dependency is needed. Only the functions the renderer uses are
-// listed; add new ones to MM2_GL_FUNCTIONS.
+// Minimal OpenGL/GLES function loader. Function pointers are fetched with
+// SDL_GL_GetProcAddress, so no GL import library or extra loader is needed.
+// Only functions used by the renderer are listed below.
 
+#ifdef __SWITCH__
+#include <GLES3/gl32.h>
+#else
 #include <SDL3/SDL_opengl.h>
+#endif
 
 #include <string>
 
@@ -33,11 +36,9 @@ namespace mm2::render::gl {
     X(void, FrontFace, (GLenum mode))                                                                             \
     X(void, PolygonOffset, (GLfloat factor, GLfloat units))                                                       \
     X(void, Viewport, (GLint x, GLint y, GLsizei w, GLsizei h))                                                   \
-    X(void, DepthRange, (GLdouble n, GLdouble f))                                                                 \
     X(void, Scissor, (GLint x, GLint y, GLsizei w, GLsizei h))                                                    \
     X(void, Clear, (GLbitfield mask))                                                                             \
     X(void, ClearColor, (GLfloat r, GLfloat g, GLfloat b, GLfloat a))                                             \
-    X(void, ClearDepth, (GLdouble d))                                                                             \
     X(void, DrawArrays, (GLenum mode, GLint first, GLsizei count))                                                \
     X(void, DrawElementsBaseVertex, (GLenum mode, GLsizei count, GLenum type, const void* indices, GLint base))   \
     X(void, PixelStorei, (GLenum pname, GLint param))                                                             \
@@ -108,6 +109,13 @@ struct Api {
 #define MM2_GL_DECLARE(ret, name, params) ret(APIENTRY* name) params = nullptr;
     MM2_GL_FUNCTIONS(MM2_GL_DECLARE)
 #undef MM2_GL_DECLARE
+#ifdef __SWITCH__
+    void(APIENTRY* DepthRangef)(GLfloat n, GLfloat f) = nullptr;
+    void(APIENTRY* ClearDepthf)(GLfloat depth) = nullptr;
+#else
+    void(APIENTRY* DepthRange)(GLdouble n, GLdouble f) = nullptr;
+    void(APIENTRY* ClearDepth)(GLdouble depth) = nullptr;
+#endif
     void(APIENTRY* DebugMessageCallback)(DebugProc callback, const void* userParam) = nullptr;
     void(APIENTRY* ObjectLabel)(GLenum identifier, GLuint name, GLsizei length, const GLchar* label) = nullptr;
 

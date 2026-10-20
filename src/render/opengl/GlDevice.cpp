@@ -252,7 +252,7 @@ bool GlDevice::init(const DeviceCreateInfo& ci, std::string* error) {
     m_settings.sanitize();
     m_context = SDL_GL_CreateContext(m_window.sdl());
     if (!m_context) {
-        *error = std::format("cannot create an OpenGL 3.3 core context: {}", SDL_GetError());
+        *error = std::format("cannot create an OpenGL context: {}", SDL_GetError());
         return false;
     }
     SDL_GL_MakeCurrent(m_window.sdl(), m_context);
@@ -264,8 +264,13 @@ bool GlDevice::init(const DeviceCreateInfo& ci, std::string* error) {
     GLint major = 0, minor = 0;
     gl.GetIntegerv(GL_MAJOR_VERSION, &major);
     gl.GetIntegerv(GL_MINOR_VERSION, &minor);
+#ifdef __SWITCH__
+    if (major * 10 + minor < 32) {
+        *error = std::format("OpenGL ES 3.2 required, driver provides {}.{}", major, minor);
+#else
     if (major * 10 + minor < 33) {
         *error = std::format("OpenGL 3.3 required, driver provides {}.{}", major, minor);
+#endif
         return false;
     }
 
@@ -755,7 +760,11 @@ void GlDevice::setViewport(const Viewport& v) {
     const auto th = static_cast<float>(targetHeight());
     gl.Viewport(static_cast<GLint>(v.x), static_cast<GLint>(th - (v.y + v.height)), static_cast<GLsizei>(v.width),
                 static_cast<GLsizei>(v.height));
+#ifdef __SWITCH__
+    gl.DepthRangef(v.minDepth, v.maxDepth);
+#else
     gl.DepthRange(v.minDepth, v.maxDepth);
+#endif
 }
 
 void GlDevice::setScissor(const Rect* r) {
@@ -783,7 +792,11 @@ void GlDevice::clear(const ClearValues& cv) {
     }
     if (cv.clearDepth && m_pass == Pass::Scene) {
         gl.DepthMask(GL_TRUE);
+#ifdef __SWITCH__
+        gl.ClearDepthf(cv.depth);
+#else
         gl.ClearDepth(cv.depth);
+#endif
         mask |= GL_DEPTH_BUFFER_BIT;
     }
     if (!mask)

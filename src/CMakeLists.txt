@@ -18,6 +18,11 @@
 #   app       the OpenMM2 executable and first-run setup
 #
 # OPENMM2_MODULES is defined in the top-level CMakeLists.txt.
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # newlib exposes strnlen and other POSIX.1-2008 APIs with this feature level.
+    add_compile_definitions(_POSIX_C_SOURCE=200809L)
+endif()
+
 foreach(module IN LISTS OPENMM2_MODULES)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${module}/CMakeLists.txt")
         add_subdirectory(${module})

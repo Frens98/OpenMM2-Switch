@@ -109,6 +109,26 @@ int run(const CommandLine& cl) {
     ctx.settings.load(ctx.settingsPath);
     ctx.display.load(ctx.settings.ini);
     applyCommandLine(cl, ctx.display);
+#ifdef __SWITCH__
+    if (ctx.settings.gameSource.empty())
+        ctx.settings.gameSource = str::fromPath(paths::executableDir() / "game");
+    // Switch is fixed at 1280x720 in fullscreen. Horizon's EGL swap does not
+    // reliably block, so the frame limiter paces presentation at 60 FPS.
+    ctx.display.backend = render::Backend::OpenGL;
+    ctx.display.windowMode = platform::WindowMode::Fullscreen;
+    ctx.display.display = 0;
+    ctx.display.windowWidth = 1280;
+    ctx.display.windowHeight = 720;
+    ctx.display.vsync = render::VsyncMode::Off;
+    auto& switchIni = ctx.settings.ini;
+    if (!switchIni.get("Display", "FrameCap"))
+        ctx.display.frameCap = 60;
+    if (!switchIni.get("Display", "MSAA"))
+        ctx.display.msaa = 1;
+    if (!switchIni.get("Display", "Anisotropy"))
+        ctx.display.anisotropy = 1;
+    ctx.display.validation = false;
+#endif
 
     std::string error;
     platform::InitOptions init;

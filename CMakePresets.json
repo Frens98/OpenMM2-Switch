@@ -69,6 +69,21 @@
       "cacheVariables": { "OPENMM2_USE_SYSTEM_DEPS": "OFF" }
     },
     {
+      "name": "switch",
+      "displayName": "Nintendo Switch homebrew",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "OPENMM2_BUILD_TESTS": "OFF",
+        "OPENMM2_BUILD_TOOLS": "OFF",
+        "OPENMM2_ENABLE_VULKAN": "OFF",
+        "OPENMM2_ENABLE_OPENGL": "ON",
+        "OPENMM2_USE_SYSTEM_DEPS": "OFF"
+      }
+    },
+    {
       "name": "mingw-cross",
       "hidden": true,
       "inherits": "linux",
@@ -97,6 +112,7 @@
     { "name": "windows-msvc-release", "configurePreset": "windows-msvc", "configuration": "RelWithDebInfo" },
     { "name": "windows-vs2022-debug", "configurePreset": "windows-vs2022", "configuration": "Debug" },
     { "name": "windows-vs2022-release", "configurePreset": "windows-vs2022", "configuration": "RelWithDebInfo" },
+    { "name": "switch", "configurePreset": "switch" },
     { "name": "mingw-cross-debug", "configurePreset": "mingw-cross-debug" },
     { "name": "mingw-cross-release", "configurePreset": "mingw-cross-release" }
   ],

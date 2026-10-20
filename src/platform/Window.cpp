@@ -102,9 +102,15 @@ std::unique_ptr<Window> Window::create(const WindowDesc& desc, std::string* erro
     if (desc.api == GraphicsApi::OpenGL) {
         flags |= SDL_WINDOW_OPENGL;
         SDL_GL_ResetAttributes();
+#ifdef __SWITCH__
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#else
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, desc.glMajor);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, desc.glMinor);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#endif
         int ctxFlags = 0;
 #ifdef __APPLE__
         ctxFlags |= SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
@@ -128,6 +134,10 @@ std::unique_ptr<Window> Window::create(const WindowDesc& desc, std::string* erro
     }
 
     const SDL_DisplayID displayId = displayIdAt(desc.display);
+#ifdef __SWITCH__
+    flags = SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN;
+    SDL_Window* sdlWindow = SDL_CreateWindow(desc.title.c_str(), 1280, 720, flags);
+#else
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, desc.title.c_str());
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, std::max(desc.width, 320));
@@ -137,6 +147,7 @@ std::unique_ptr<Window> Window::create(const WindowDesc& desc, std::string* erro
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, static_cast<Sint64>(flags));
     SDL_Window* sdlWindow = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
+#endif
     if (!sdlWindow) {
         if (error)
             *error = SDL_GetError();
@@ -147,7 +158,11 @@ std::unique_ptr<Window> Window::create(const WindowDesc& desc, std::string* erro
     std::unique_ptr<Window> w(new Window());
     w->m_window = sdlWindow;
     w->m_api = desc.api;
+#ifdef __SWITCH__
+    w->m_mode = WindowMode::Fullscreen;
+#else
     w->applyMode(desc.mode, desc.display, {desc.width, desc.height}, desc.fullscreenMode);
+#endif
     if (!desc.hidden)
         w->show();
     return w;
@@ -167,6 +182,13 @@ void Window::show() {
 }
 
 bool Window::applyMode(WindowMode mode, int display, Extent windowedSize, const DisplayMode& fullscreenMode) {
+#ifdef __SWITCH__
+    (void)display;
+    (void)windowedSize;
+    (void)fullscreenMode;
+    m_mode = WindowMode::Fullscreen;
+    return true;
+#else
     const SDL_DisplayID displayId = displayIdAt(display);
     bool ok = true;
     switch (mode) {
@@ -213,6 +235,7 @@ bool Window::applyMode(WindowMode mode, int display, Extent windowedSize, const 
         log::warn("platform: switching to {} mode failed: {}", windowModeName(mode), SDL_GetError());
     m_mode = mode;
     return ok;
+#endif
 }
 
 Extent Window::size() const {

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25...4.0)
 project(OpenMM2
     VERSION 0.4.3
     DESCRIPTION "Open source reimplementation of Midtown Madness 2"
-    HOMEPAGE_URL "https://github.com/lowlevelmetal/OpenMM2"
+    HOMEPAGE_URL "https://github.com/Frens98/OpenMM2-Switch"
     LANGUAGES C CXX)
 
 if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
@@ -12,11 +12,24 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
-option(OPENMM2_BUILD_TESTS "Build unit tests" ON)
-option(OPENMM2_BUILD_TOOLS "Build developer tools (mm2tool)" ON)
-option(OPENMM2_ENABLE_VULKAN "Build the Vulkan renderer" ON)
-option(OPENMM2_ENABLE_OPENGL "Build the OpenGL fallback renderer" ON)
-option(OPENMM2_USE_SYSTEM_DEPS "Prefer system packages over fetching dependencies" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(_openmm2_tests_default OFF)
+    set(_openmm2_tools_default OFF)
+    set(_openmm2_vulkan_default OFF)
+    set(_openmm2_opengl_default ON)
+    set(_openmm2_system_deps_default OFF)
+else()
+    set(_openmm2_tests_default ON)
+    set(_openmm2_tools_default ON)
+    set(_openmm2_vulkan_default ON)
+    set(_openmm2_opengl_default ON)
+    set(_openmm2_system_deps_default ON)
+endif()
+option(OPENMM2_BUILD_TESTS "Build unit tests" ${_openmm2_tests_default})
+option(OPENMM2_BUILD_TOOLS "Build developer tools (mm2tool)" ${_openmm2_tools_default})
+option(OPENMM2_ENABLE_VULKAN "Build the Vulkan renderer" ${_openmm2_vulkan_default})
+option(OPENMM2_ENABLE_OPENGL "Build the OpenGL fallback renderer" ${_openmm2_opengl_default})
+option(OPENMM2_USE_SYSTEM_DEPS "Prefer system packages over fetching dependencies" ${_openmm2_system_deps_default})
 option(OPENMM2_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 if(NOT OPENMM2_ENABLE_VULKAN AND NOT OPENMM2_ENABLE_OPENGL)
@@ -48,6 +61,7 @@ include(Fonts)
 set(OPENMM2_MODULES core vfs data asset city platform render audio video phys ai net ui game app)
 
 add_subdirectory(src)
+include(SwitchPackaging)
 
 if(OPENMM2_BUILD_TOOLS)
     add_subdirectory(tools)

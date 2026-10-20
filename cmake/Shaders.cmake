@@ -17,6 +17,12 @@ endif()
 
 set(OPENMM2_SHADER_TOOL "${CMAKE_CURRENT_LIST_DIR}/ShaderTool.cmake")
 
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(OPENMM2_GL_PRELUDE "${PROJECT_SOURCE_DIR}/src/render/shaders/prelude_gles.glsl")
+else()
+    set(OPENMM2_GL_PRELUDE "${PROJECT_SOURCE_DIR}/src/render/shaders/prelude_gl.glsl")
+endif()
+
 # openmm2_embed_shaders(<target> PRELUDE_DIR <dir> SOURCES <files...>)
 #
 # Adds a generated source to <target> that defines, for each shader file
@@ -65,10 +71,10 @@ function(openmm2_embed_shaders target)
             endif()
             add_custom_command(
                 OUTPUT "${gl_src}"
-                COMMAND "${CMAKE_COMMAND}" -DMODE=concat "-DPRELUDE=${ARG_PRELUDE_DIR}/prelude_gl.glsl"
+                COMMAND "${CMAKE_COMMAND}" -DMODE=concat "-DPRELUDE=${OPENMM2_GL_PRELUDE}"
                         "-DINPUT=${abs}" "-DOUTPUT=${gl_src}" -P "${OPENMM2_SHADER_TOOL}"
                 ${validate_cmd}
-                DEPENDS "${abs}" "${ARG_PRELUDE_DIR}/prelude_gl.glsl" "${OPENMM2_SHADER_TOOL}"
+                DEPENDS "${abs}" "${OPENMM2_GL_PRELUDE}" "${OPENMM2_SHADER_TOOL}"
                 COMMENT "Preparing GLSL ${fname}"
                 VERBATIM)
             list(APPEND outputs "${gl_src}")

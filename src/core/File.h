@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -49,6 +50,9 @@ private:
     void* m_handle = nullptr;
 #else
     int m_fd = -1;
+#ifdef __SWITCH__
+    mutable std::mutex m_readMutex;
+#endif
 #endif
     std::uint64_t m_size = 0;
 };

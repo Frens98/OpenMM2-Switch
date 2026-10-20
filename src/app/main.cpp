@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL_main.h>
 
+#include <cstdlib>
 #include <cstdio>
 #include <print>
 
@@ -72,6 +73,10 @@ int importSource(const std::vector<std::string>& args) {
 } // namespace
 
 int main(int argc, char** argv) {
+#ifdef __SWITCH__
+    if (argc > 0 && argv[0] && *argv[0])
+        setenv("OPENMM2_SWITCH_NRO_PATH", argv[0], 1);
+#endif
 #ifdef _WIN32
     attachParentConsole();
 #endif

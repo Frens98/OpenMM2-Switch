@@ -16,6 +16,10 @@
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 // clang-format on
+#elif defined(__SWITCH__)
+extern "C" {
+#include <switch/services/nifm.h>
+}
 #else
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -134,6 +138,23 @@ std::vector<Interface> interfaces() {
                 out.push_back(f);
             }
         }
+    }
+#elif defined(__SWITCH__)
+    if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
+        u32 ip = 0;
+        u32 mask = 0;
+        u32 gateway = 0;
+        u32 primaryDns = 0;
+        u32 secondaryDns = 0;
+        if (R_SUCCEEDED(nifmGetCurrentIpConfigInfo(&ip, &mask, &gateway, &primaryDns, &secondaryDns)) && ip != 0) {
+            Interface f;
+            f.ip = ntohl(ip);
+            f.mask = ntohl(mask);
+            f.broadcast = f.ip | ~f.mask;
+            f.canBroadcast = f.mask != 0 && f.mask != 0xFFFFFFFFu;
+            out.push_back(f);
+        }
+        nifmExit();
     }
 #else
     ifaddrs* list = nullptr;

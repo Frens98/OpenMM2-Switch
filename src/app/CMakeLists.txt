@@ -24,6 +24,18 @@ add_executable(openmm2 main.cpp)
 target_link_libraries(openmm2 PRIVATE mm2_app SDL3::SDL3)
 set_target_properties(openmm2 PROPERTIES WIN32_EXECUTABLE TRUE)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # SDL3's community libnx backend uses the Mesa EGL/GLES stack. Keep these
+    # static libraries in a rescan group because nouveau has circular refs.
+    # devkitPro's Generic-dkP platform does not inherit CMake's GNU linker
+    # group definition, although devkitA64 uses GNU ld and supports it.
+    set(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED TRUE)
+    set(CMAKE_CXX_LINK_GROUP_USING_RESCAN "LINKER:--start-group" "LINKER:--end-group")
+    target_link_libraries(openmm2 PRIVATE
+        "$<LINK_GROUP:RESCAN,SDL3::SDL3,EGL,GLESv2,glapi,drm_nouveau,nx>"
+        m)
+endif()
+
 if(WIN32)
     set(OPENMM2_ICON "${PROJECT_SOURCE_DIR}/packaging/icons/openmm2.ico")
     configure_file(openmm2.rc.in "${CMAKE_CURRENT_BINARY_DIR}/openmm2.rc" @ONLY)
